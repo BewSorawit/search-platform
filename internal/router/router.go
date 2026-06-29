@@ -14,5 +14,7 @@ func New(mc *milvus.Client) *http.ServeMux {
 
 	mux.Handle("/ready", handler.NewReadyHandler(mc))
 
+	mux.Handle("/ingest", handler.NewIngestHandler(mc))
+
 	return mux
 }

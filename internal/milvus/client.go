@@ -36,3 +36,7 @@ func (c *Client) Ping(ctx context.Context) error {
 	_, err := c.cli.ListCollections(ctx, milvusclient.NewListCollectionOption())
 	return err
 }
+
+func (c *Client) Insert(ctx context.Context, doc Document) error {
+	return nil
+}
