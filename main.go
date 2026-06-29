@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"search-platform/internal/milvus"
@@ -13,6 +14,10 @@ func main() {
 	mc, err := milvus.New("localhost:19530")
 	if err != nil {
 		log.Fatal("milvus connection failed:", err)
+	}
+
+	if err := mc.EnsureCollection(context.Background()); err != nil{
+		log.Fatal(err)
 	}
 
 	// inject dependency
