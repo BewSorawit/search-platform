@@ -9,49 +9,63 @@ import (
 	"time"
 )
 
-type IngestHandler struct {
-	mc *milvus.Client
+type documentUpserter interface {
+	Upsert(ctx context.Context, doc milvus.Document) error
 }
 
-func NewIngestHandler(mc *milvus.Client) *IngestHandler {
+type IngestHandler struct {
+	mc documentUpserter
+}
+
+func NewIngestHandler(mc documentUpserter) *IngestHandler {
 	return &IngestHandler{mc: mc}
 }
 
 func (h *IngestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 
 	var doc milvus.Document
 
 	if err := json.NewDecoder(r.Body).Decode(&doc); err != nil {
-		http.Error(w, "invalid json", http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "invalid json")
 		return
 	}
 
-	if doc.ID == 0 {
-		http.Error(w, "id required", http.StatusBadRequest)
+	if doc.ID < 0 {
+		writeJSONError(w, http.StatusBadRequest, "id must be non-negative")
 		return
 	}
 
-	if len(doc.Vector) == 0 {
-		http.Error(w, "vector required", http.StatusBadRequest)
+	if doc.Text == "" {
+		writeJSONError(w, http.StatusBadRequest, "text required")
+		return
+	}
+
+	if len(doc.Text) > 4096 {
+		writeJSONError(w, http.StatusBadRequest, "text too long")
+		return
+	}
+
+	if len(doc.Vector) != milvus.Dimension {
+		writeJSONError(w, http.StatusBadRequest, "invalid vector dimension")
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	if err := h.mc.Insert(ctx, doc); err != nil {
-		log.Println(err)
-		http.Error(w, "insert failed", http.StatusInternalServerError)
+	if err := h.mc.Upsert(ctx, doc); err != nil {
+		status, msg := milvus.HTTPStatusAndMessage(err)
+		if status >= http.StatusInternalServerError {
+			log.Println(err)
+		}
+		writeJSONError(w, status, msg)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"status": "ok",
-	})
 
+	writeJSON(w, http.StatusOK, StatusResponse{Status: "ok"})
 }

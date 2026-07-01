@@ -2,6 +2,7 @@ package milvus
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 
@@ -111,6 +112,36 @@ func (c *Client) EnsureCollection(ctx context.Context) error {
 	return nil
 }
 
-func (c *Client) Insert(ctx context.Context, doc Document) error {
-	return nil
+func (c *Client) Upsert(ctx context.Context, doc Document) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	if doc.ID < 0 {
+		return ErrInvalidID
+	}
+
+	if doc.Text == "" {
+		return ErrTextRequired
+	}
+
+	if len(doc.Text) > 4096 {
+		return ErrTextTooLong
+	}
+
+	if len(doc.Vector) != Dimension {
+		return fmt.Errorf(
+			"%w: got %d want %d",
+			ErrInvalidVectorDimension,
+			len(doc.Vector),
+			Dimension,
+		)
+	}
+
+	_, err := c.cli.Upsert(ctx, milvusclient.NewColumnBasedInsertOption(CollectionName).
+		WithInt64Column(IDField, []int64{doc.ID}).
+		WithVarcharColumn(TextField, []string{doc.Text}).
+		WithFloatVectorColumn(VectorField, Dimension, [][]float32{doc.Vector}),
+	)
+
+	return err
 }
